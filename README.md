@@ -64,8 +64,13 @@ near the top of `rename-scans.py` is where your own rules go.
 
 ## What you need
 
-- Python 3.11 or newer (macOS: `brew install python`). Apple's built-in
-  `/usr/bin/python3` is too old.
+- One way to run Python scripts with their dependencies. Any of these works:
+  - **[uv](https://docs.astral.sh/uv/)** (recommended; `brew install uv`). It
+    reads the dependency list at the top of the script, builds a private,
+    cached environment for it, and can fetch a suitable Python itself.
+  - **pipx** 1.4 or newer (`brew install pipx`), which reads the same list.
+  - Python 3.11 or newer with `pip`. Apple's built-in `/usr/bin/python3` is too
+    old; on macOS use `brew install python`.
 - An Anthropic API key from <https://console.anthropic.com> (Settings → API
   Keys). The API is billed per use, separately from a Claude.ai subscription;
   add a few dollars of credit, which lasts a long time at this volume.
@@ -100,15 +105,27 @@ for someone without a subscription.
 
 ## Setup
 
-1. **Get the code and install the SDK**
+1. **Get the code**
 
    ```sh
    git clone https://github.com/mrizzo/rename-scans.git ~/rename-scans
-   python3 -m pip install --user --break-system-packages anthropic
    ```
 
-   (Or install `anthropic` into a venv and run the script with that venv's
-   `python3`.)
+   The script declares its own dependencies in a comment block at the top
+   ([PEP 723](https://peps.python.org/pep-0723/)), so with uv or pipx there is
+   nothing to install and no venv to manage. The first run downloads the
+   Anthropic SDK into a cache; later runs reuse it.
+
+   | How you run it | Command (`RS=~/rename-scans/rename-scans.py`) |
+   |---|---|
+   | uv | `uv run --script $RS` |
+   | pipx | `pipx run $RS` |
+   | plain Python | `python3 -m pip install --user --break-system-packages anthropic`, then `python3 $RS` |
+
+   The plain-Python route installs the SDK into your user site-packages. It
+   works, but a Python upgrade (3.14 → 3.15) leaves the SDK behind and you'll
+   need to run the install again. The steps below use uv; swap in your
+   runner.
 
 2. **Save your API key** where only you can read it. On macOS, copy the key,
    then:
@@ -135,7 +152,7 @@ for someone without a subscription.
 4. **Try it** without renaming anything:
 
    ```sh
-   python3 ~/rename-scans/rename-scans.py --dry-run
+   uv run --script ~/rename-scans/rename-scans.py --dry-run
    ```
 
    You should see one `would rename ... -> ...` line per unrenamed scan. No
@@ -146,11 +163,16 @@ for someone without a subscription.
 
 ## Running it automatically (cron)
 
-`crontab -e` and add a line like this to run every 15 minutes. Use the full
-path to your Python, since cron's `PATH` is minimal (`which python3` shows it;
-Homebrew on Apple Silicon is `/opt/homebrew/bin/python3`):
+`crontab -e` and add a line like this to run every 15 minutes. Use full paths,
+since cron's `PATH` is minimal (`which uv`, `which pipx` or `which python3`
+shows yours; Homebrew on Apple Silicon puts them in `/opt/homebrew/bin`):
 
 ```
+# uv
+*/15 * * * * /opt/homebrew/bin/uv run --script /Users/YOU/rename-scans/rename-scans.py >> /Users/YOU/rename-scans.log 2>&1
+# or pipx
+*/15 * * * * /opt/homebrew/bin/pipx run /Users/YOU/rename-scans/rename-scans.py >> /Users/YOU/rename-scans.log 2>&1
+# or plain Python with the SDK installed
 */15 * * * * /opt/homebrew/bin/python3 /Users/YOU/rename-scans/rename-scans.py >> /Users/YOU/rename-scans.log 2>&1
 ```
 
@@ -165,9 +187,9 @@ macOS details matter. Both are one-time steps.
 - **Allow Python to read Google Drive.** The first time Python reads a Drive
   file, macOS asks whether `python3` may access files in Google Drive. A cron
   job can't show that prompt, so its reads just fail. Run the script once by
-  hand from Terminal (step 4) and click **Allow**. If a Homebrew upgrade
-  installs a new Python version you may be asked again; until you allow it,
-  the log shows `failed ... will retry next run`.
+  hand from Terminal (step 4), using the same runner as your cron line, and
+  click **Allow**. If an upgrade brings a new Python version you may be asked
+  again; until you allow it, the log shows `failed ... will retry next run`.
 - **Make the scans folder available offline.** In Finder, right-click the
   folder → *Offline access* → *Available offline*. Drive then downloads new
   files as they arrive instead of leaving online-only placeholders.
@@ -192,7 +214,7 @@ and run both from one cron line, so a scan is moved and renamed in the same
 run:
 
 ```
-*/15 * * * * /bin/bash /Users/YOU/bin/move-scans.sh >> /Users/YOU/move-scans.log 2>&1; /opt/homebrew/bin/python3 /Users/YOU/rename-scans/rename-scans.py >> /Users/YOU/rename-scans.log 2>&1
+*/15 * * * * /bin/bash /Users/YOU/bin/move-scans.sh >> /Users/YOU/move-scans.log 2>&1; /opt/homebrew/bin/uv run --script /Users/YOU/rename-scans/rename-scans.py >> /Users/YOU/rename-scans.log 2>&1
 ```
 
 ## Settings
