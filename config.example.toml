@@ -10,3 +10,9 @@ folders = [
 # model = "claude-opus-5-5"
 # min_age_secs = 60
 # lock_dir = "~/.rename-scans.lock"
+
+# How the scanner names files, and what to rename them to (strftime codes).
+# The timestamp parsed from raw_format fills name_format; {name} is Claude's
+# description. Only files whose names parse with raw_format are touched.
+# raw_format = "%Y_%m_%d_%H_%M_%S.pdf"
+# name_format = "%Y%m%d_%H%M%S_{name}.pdf"
