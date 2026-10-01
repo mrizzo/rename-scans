@@ -28,11 +28,17 @@ Configuration lives in ~/.config/rename-scans/config.toml (or --config):
   lock_dir = "~/.rename-scans.lock"                 # optional
   raw_format = "%Y_%m_%d_%H_%M_%S.pdf"              # optional; how the scanner names files
   name_format = "%Y%m%d_%H%M%S_{name}.pdf"          # optional; what to rename them to
+  paste_file = "to-paste.tsv"                       # optional; "" turns it off
+  paste_date_format = "%m/%d/%Y"                    # optional
 
 A folder may contain {year}, replaced by the current year. raw_format and
 name_format use strftime codes; the timestamp parsed from the raw name fills
 name_format, and {name} is the description Claude produced. Only files whose
 name parses with raw_format are touched.
+
+Each medical receipt also gets a row appended to paste_file (date printed on the
+receipt, issuer as printed, amount), ready to paste into a spreadsheet. A
+relative paste_file lives next to the scans.
 
 Usage:
   rename-scans.py [--config FILE] [--dry-run] [FOLDER ...]
@@ -61,6 +67,8 @@ DEFAULTS = {
     "lock_dir": "~/.rename-scans.lock",
     "raw_format": "%Y_%m_%d_%H_%M_%S.pdf",
     "name_format": "%Y%m%d_%H%M%S_{name}.pdf",
+    "paste_file": "to-paste.tsv",
+    "paste_date_format": "%m/%d/%Y",
 }
 MAX_PDF_BYTES = 24 * 1024 * 1024  # API request limit is 32 MB, base64 adds a third
 
@@ -81,6 +89,9 @@ underscores, no corporate prefixes like 医療法人/株式会社 \
 ひまわり薬局 中央店 -> himawari_yakkyoku_chuo).
 - amount_yen: the total paid, digits only, from 領収金額 or 合計 \
 (the amount the patient paid, not 保険点数 or the pre-insurance total).
+- receipt_date: the date printed on the receipt as YYYY-MM-DD: the 領収日 or \
+発行日 if shown, otherwise the 診療日 (date of treatment). Convert Japanese era \
+years (令和8年 = 2026).
 
 For other documents:
 - description: 3-8 lowercase words separated by underscores, issuer first, \
@@ -103,6 +114,7 @@ class ScanInfo(BaseModel):
     issuer_romaji: Optional[str] = Field(description="romaji_with_underscores, receipts only")
     amount_yen: Optional[int] = Field(description="total paid or due in yen, receipts and bills only")
     description: Optional[str] = Field(description="short_description_with_underscores, non-receipts only")
+    receipt_date: Optional[str] = Field(description="date printed on the receipt, YYYY-MM-DD, receipts only")
 
 
 def log(msg):
@@ -161,7 +173,10 @@ def classify(client, model, pdf_bytes):
     )
     if response.stop_reason != "end_turn" or response.parsed_output is None:
         raise RuntimeError(f"stop_reason={response.stop_reason}")
-    return response.parsed_output, response.usage
+    info = response.parsed_output
+    if info.issuer_kanji:
+        info.issuer_kanji = " ".join(info.issuer_kanji.split())  # no tabs or newlines in logs or TSV cells
+    return info, response.usage
 
 
 def scan_time(filename, raw_format):
@@ -189,6 +204,25 @@ def new_name(path, info, raw_format, name_format):
         name = template.replace("{name}", f"{desc}_copy{n}")
         n += 1
     return name
+
+
+def paste_row(path, info, raw_format, date_format):
+    """A tab-separated date / issuer / amount row for a medical receipt, or None."""
+    if info.doc_type != "medical_receipt" or not info.issuer_kanji or info.amount_yen is None:
+        return None
+    try:
+        date = datetime.date.fromisoformat(info.receipt_date or "")
+    except ValueError:
+        log(f"note {path.name}: no readable date on the receipt, using the scan date")
+        date = scan_time(path.name, raw_format).date()
+    return f"{date.strftime(date_format)}\t{info.issuer_kanji}\t{info.amount_yen}"
+
+
+def append_row(paste_file, row):
+    """Append one line, adding a newline first if the file doesn't end with one."""
+    needs_newline = paste_file.exists() and paste_file.stat().st_size > 0 and not paste_file.read_bytes().endswith(b"\n")
+    with open(paste_file, "a", encoding="utf-8") as f:
+        f.write(("\n" if needs_newline else "") + row + "\n")
 
 
 def raw_scans(folder, min_age_secs, raw_format):
@@ -243,11 +277,18 @@ def main():
                 extra = " ".join(x for x in (info.issuer_kanji, info.amount_yen is not None and f"¥{info.amount_yen}") if x)
                 extra = f" [{extra}]" if extra else ""
                 tokens = f"({usage.input_tokens} in / {usage.output_tokens} out)"
+                row = paste_row(path, info, config["raw_format"], config["paste_date_format"])
+                paste_file = path.parent / expand(config["paste_file"]) if config["paste_file"] else None
                 if args.dry_run:
                     log(f"would rename {path.name} -> {name}{extra} {tokens}")
+                    if row and paste_file:
+                        log(f"would add to {paste_file.name}: {row.replace(chr(9), ' | ')}")
                 else:
                     path.rename(path.parent / name)
                     log(f"renamed {path.name} -> {name}{extra} {tokens}")
+                    if row and paste_file:
+                        append_row(paste_file, row)
+                        log(f"added to {paste_file.name}: {row.replace(chr(9), ' | ')}")
             except anthropic.APIConnectionError as e:
                 log(f"network error, stopping this run: {e}")
                 return 1

@@ -10,6 +10,17 @@ notices and writes romaji/English filenames.
 | Bill, invoice or payment notice | `YYYYMMDD_HHMMSS_<description>_<yen>.pdf` | `20260917_220249_tokyo_suidokyoku_water_sewage_bill_1280.pdf` |
 | Anything else | `YYYYMMDD_HHMMSS_<description>.pdf` | `20260909_084821_sample_mansion_garbage_area_notice.pdf` |
 
+Each medical receipt also gets a row added to `to-paste.tsv` next to the scans,
+ready to paste into a spreadsheet (for example, for a medical-expense
+deduction):
+
+```
+09/16/2026	さくら内科クリニック	29210
+```
+
+The date is the one printed on the receipt, not the scan date, so receipts
+scanned late still land in the right month.
+
 The timestamp comes from the scanner's filename (by default
 `YYYY_MM_DD_HH_MM_SS.pdf`), so files sort by when they were scanned.
 
@@ -149,6 +160,8 @@ All optional except `folders`; see `config.example.toml`.
 | `model` | `claude-opus-5-5` | Claude model to use. |
 | `min_age_secs` | `60` | Skip files modified more recently than this. |
 | `lock_dir` | `~/.rename-scans.lock` | Prevents overlapping runs. |
+| `paste_file` | `to-paste.tsv` | Where receipt rows go. Relative paths are next to the scans; `""` turns it off. |
+| `paste_date_format` | `%m/%d/%Y` | Date format in those rows. |
 
 Command line:
 

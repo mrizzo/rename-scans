@@ -16,3 +16,9 @@ folders = [
 # description. Only files whose names parse with raw_format are touched.
 # raw_format = "%Y_%m_%d_%H_%M_%S.pdf"
 # name_format = "%Y%m%d_%H%M%S_{name}.pdf"
+
+# Each medical receipt adds a row to this file: date printed on the receipt,
+# issuer as printed, amount (tab-separated, ready to paste into a spreadsheet).
+# A relative path lives next to the scans; "" turns it off.
+# paste_file = "to-paste.tsv"
+# paste_date_format = "%m/%d/%Y"
