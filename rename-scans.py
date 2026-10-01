@@ -1,12 +1,13 @@
 #!/opt/homebrew/bin/python3
 """Rename freshly scanned PDFs using Claude.
 
-Finds raw scanner files (YYYY_MM_DD_HH_MM_SS.pdf) in the given folders,
+Finds raw scanner files (by default YYYY_MM_DD_HH_MM_SS.pdf) in the given folders,
 sends each PDF to the Anthropic API, and renames it in place to match the
 existing convention:
 
   medical / pharmacy receipt -> YYYYMMDD_HHMMSS_<issuer_romaji>_<yen>.pdf
                                  e.g. 20260905_104747_sakura_naika_clinic_1380.pdf
+  bill / invoice / statement -> YYYYMMDD_HHMMSS_<short_description>_<yen>.pdf
   anything else              -> YYYYMMDD_HHMMSS_<short_description>.pdf
                                  e.g. 20260909_084821_sample_mansion_temporary_garbage_area_notice.pdf
 
@@ -25,8 +26,13 @@ Configuration lives in ~/.config/rename-scans/config.toml (or --config):
   model = "claude-opus-5-5"                         # optional
   min_age_secs = 60                                 # optional
   lock_dir = "~/.rename-scans.lock"                 # optional
+  raw_format = "%Y_%m_%d_%H_%M_%S.pdf"              # optional; how the scanner names files
+  name_format = "%Y%m%d_%H%M%S_{name}.pdf"          # optional; what to rename them to
 
-A folder may contain {year}, replaced by the current year.
+A folder may contain {year}, replaced by the current year. raw_format and
+name_format use strftime codes; the timestamp parsed from the raw name fills
+name_format, and {name} is the description Claude produced. Only files whose
+name parses with raw_format are touched.
 
 Usage:
   rename-scans.py [--config FILE] [--dry-run] [FOLDER ...]
@@ -53,8 +59,9 @@ DEFAULTS = {
     "model": "claude-opus-5-5",
     "min_age_secs": 60,
     "lock_dir": "~/.rename-scans.lock",
+    "raw_format": "%Y_%m_%d_%H_%M_%S.pdf",
+    "name_format": "%Y%m%d_%H%M%S_{name}.pdf",
 }
-RAW_NAME = re.compile(r"^(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_(\d{2})\.pdf$")
 MAX_PDF_BYTES = 24 * 1024 * 1024  # API request limit is 32 MB, base64 adds a third
 
 PROMPT = """This is a scanned document from a household in Japan. Classify it and \
@@ -81,6 +88,11 @@ then what it is; romaji for Japanese names, English for the document type, and \
 the person's first name if it is about one specific person \
 (e.g. sample_mansion_holiday_work_notice, \
 chuo_ku_kodomo_influenza_vaccine_yoshinhyo_taro).
+- amount_yen: only for a bill, invoice, payment notice or receipt with a \
+single total to pay or paid (e.g. 請求金額, ご請求額, お支払い金額, 合計): that total \
+in yen, digits only. Null for everything else, including statements of points \
+or balances. If the total is in another currency, leave amount_yen null and end \
+the description with the amount and currency (e.g. _120usd).
 
 Leave fields that don't apply as null."""
 
@@ -89,7 +101,7 @@ class ScanInfo(BaseModel):
     doc_type: Literal["medical_receipt", "other"]
     issuer_kanji: Optional[str] = Field(description="発行者 as printed, receipts only")
     issuer_romaji: Optional[str] = Field(description="romaji_with_underscores, receipts only")
-    amount_yen: Optional[int] = Field(description="total paid in yen, receipts only")
+    amount_yen: Optional[int] = Field(description="total paid or due in yen, receipts and bills only")
     description: Optional[str] = Field(description="short_description_with_underscores, non-receipts only")
 
 
@@ -152,28 +164,40 @@ def classify(client, model, pdf_bytes):
     return response.parsed_output, response.usage
 
 
-def new_name(path, info):
-    m = RAW_NAME.match(path.name)
-    stamp = "{}{}{}_{}{}{}".format(*m.groups())
+def scan_time(filename, raw_format):
+    """The timestamp in a raw scanner filename, or None if it isn't one."""
+    if not filename.lower().endswith(".pdf"):
+        return None
+    try:
+        return datetime.datetime.strptime(filename, raw_format)
+    except ValueError:
+        return None
+
+
+def new_name(path, info, raw_format, name_format):
+    stamp = scan_time(path.name, raw_format)
+    template = stamp.strftime(name_format)  # {name} passes through strftime untouched
     if info.doc_type == "medical_receipt" and info.issuer_romaji and info.amount_yen is not None:
         desc = f"{slug(info.issuer_romaji)}_{info.amount_yen}"
     else:
         desc = slug(info.description) or slug(info.issuer_romaji) or "unknown_document"
-    name = f"{stamp}_{desc}.pdf"
+        if info.amount_yen is not None:
+            desc = f"{desc}_{info.amount_yen}"
+    name = template.replace("{name}", desc)
     n = 2
     while (path.parent / name).exists():
-        name = f"{stamp}_{desc}_copy{n}.pdf"
+        name = template.replace("{name}", f"{desc}_copy{n}")
         n += 1
     return name
 
 
-def raw_scans(folder, min_age_secs):
+def raw_scans(folder, min_age_secs, raw_format):
     if not folder.is_dir():
         log(f"skip {folder}: not a directory")
         return
     now = time.time()
     for path in sorted(folder.iterdir()):
-        if not RAW_NAME.match(path.name):
+        if not path.is_file() or scan_time(path.name, raw_format) is None:
             continue
         age = now - path.stat().st_mtime
         if age < min_age_secs:
@@ -193,6 +217,8 @@ def main():
     if not folders:
         sys.exit(f"no folders: list them in {args.config or CONFIG_FILE} or on the command line")
     lockdir = expand(config["lock_dir"])
+    if "{name}" not in config["name_format"]:
+        sys.exit("name_format must contain {name}")
 
     try:
         lockdir.mkdir()
@@ -201,7 +227,7 @@ def main():
         return 0
 
     try:
-        scans = [p for folder in folders for p in raw_scans(folder, config["min_age_secs"])]
+        scans = [p for folder in folders for p in raw_scans(folder, config["min_age_secs"], config["raw_format"])]
         if not scans:
             return 0
         client = anthropic.Anthropic(api_key=load_api_key(expand(config["api_key_file"])))
@@ -213,8 +239,9 @@ def main():
                     log(f"skip {path.name}: {len(pdf) // 2**20} MB is too large for one request")
                     continue
                 info, usage = classify(client, config["model"], pdf)
-                name = new_name(path, info)
-                extra = f" [{info.issuer_kanji} ¥{info.amount_yen}]" if info.doc_type == "medical_receipt" else ""
+                name = new_name(path, info, config["raw_format"], config["name_format"])
+                extra = " ".join(x for x in (info.issuer_kanji, info.amount_yen is not None and f"¥{info.amount_yen}") if x)
+                extra = f" [{extra}]" if extra else ""
                 tokens = f"({usage.input_tokens} in / {usage.output_tokens} out)"
                 if args.dry_run:
                     log(f"would rename {path.name} -> {name}{extra} {tokens}")

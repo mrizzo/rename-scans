@@ -1,11 +1,12 @@
 # rename-scans
 
-Renames freshly scanned PDFs (`YYYY_MM_DD_HH_MM_SS.pdf`, as a ScanSnap-style
-scanner names them) by sending each one to Claude and asking what it is.
+Renames freshly scanned PDFs (by default `YYYY_MM_DD_HH_MM_SS.pdf`) by sending
+each one to Claude and asking what it is.
 
 | Document | New name |
 |---|---|
 | Medical / pharmacy receipt (領収証) | `YYYYMMDD_HHMMSS_<issuer_romaji>_<yen>.pdf` |
+| Bill, invoice or payment notice | `YYYYMMDD_HHMMSS_<short_description>_<yen>.pdf` |
 | Anything else | `YYYYMMDD_HHMMSS_<short_description>.pdf` |
 
 Files are renamed in place. Nothing is overwritten (clashes get `_copy2`,
@@ -39,5 +40,17 @@ On macOS, cron needs Full Disk Access to read folders under
 rename-scans.py [--config FILE] [--dry-run] [FOLDER ...]
 ```
 
-Folders on the command line override the config. Uses `claude-opus-5-5` at low
+Folders on the command line override the config.
+
+Both the scanner's naming and the new naming are configurable with strftime
+codes. The timestamp parsed from `raw_format` fills `name_format`, and `{name}`
+is the description Claude produced:
+
+```toml
+raw_format = "%Y_%m_%d_%H_%M_%S.pdf"       # default
+name_format = "%Y%m%d_%H%M%S_{name}.pdf"   # default
+```
+
+Only files whose names parse with `raw_format` are touched, so already-renamed
+files are never picked up again. Uses `claude-opus-5-5` at low
 effort; each scan costs roughly a cent.
