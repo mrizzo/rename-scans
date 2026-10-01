@@ -7,6 +7,7 @@ existing convention:
 
   medical / pharmacy receipt -> YYYYMMDD_HHMMSS_<issuer_romaji>_<yen>.pdf
                                  e.g. 20260905_104747_sakura_naika_clinic_1380.pdf
+  bill / invoice / statement -> YYYYMMDD_HHMMSS_<short_description>_<yen>.pdf
   anything else              -> YYYYMMDD_HHMMSS_<short_description>.pdf
                                  e.g. 20260909_084821_sample_mansion_temporary_garbage_area_notice.pdf
 
@@ -87,6 +88,11 @@ then what it is; romaji for Japanese names, English for the document type, and \
 the person's first name if it is about one specific person \
 (e.g. sample_mansion_holiday_work_notice, \
 chuo_ku_kodomo_influenza_vaccine_yoshinhyo_taro).
+- amount_yen: only for a bill, invoice, payment notice or receipt with a \
+single total to pay or paid (e.g. 請求金額, ご請求額, お支払い金額, 合計): that total \
+in yen, digits only. Null for everything else, including statements of points \
+or balances. If the total is in another currency, leave amount_yen null and end \
+the description with the amount and currency (e.g. _120usd).
 
 Leave fields that don't apply as null."""
 
@@ -95,7 +101,7 @@ class ScanInfo(BaseModel):
     doc_type: Literal["medical_receipt", "other"]
     issuer_kanji: Optional[str] = Field(description="発行者 as printed, receipts only")
     issuer_romaji: Optional[str] = Field(description="romaji_with_underscores, receipts only")
-    amount_yen: Optional[int] = Field(description="total paid in yen, receipts only")
+    amount_yen: Optional[int] = Field(description="total paid or due in yen, receipts and bills only")
     description: Optional[str] = Field(description="short_description_with_underscores, non-receipts only")
 
 
@@ -175,6 +181,8 @@ def new_name(path, info, raw_format, name_format):
         desc = f"{slug(info.issuer_romaji)}_{info.amount_yen}"
     else:
         desc = slug(info.description) or slug(info.issuer_romaji) or "unknown_document"
+        if info.amount_yen is not None:
+            desc = f"{desc}_{info.amount_yen}"
     name = template.replace("{name}", desc)
     n = 2
     while (path.parent / name).exists():
@@ -232,7 +240,8 @@ def main():
                     continue
                 info, usage = classify(client, config["model"], pdf)
                 name = new_name(path, info, config["raw_format"], config["name_format"])
-                extra = f" [{info.issuer_kanji} ¥{info.amount_yen}]" if info.doc_type == "medical_receipt" else ""
+                extra = " ".join(x for x in (info.issuer_kanji, info.amount_yen is not None and f"¥{info.amount_yen}") if x)
+                extra = f" [{extra}]" if extra else ""
                 tokens = f"({usage.input_tokens} in / {usage.output_tokens} out)"
                 if args.dry_run:
                     log(f"would rename {path.name} -> {name}{extra} {tokens}")

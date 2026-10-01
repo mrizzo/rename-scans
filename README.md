@@ -6,6 +6,7 @@ each one to Claude and asking what it is.
 | Document | New name |
 |---|---|
 | Medical / pharmacy receipt (領収証) | `YYYYMMDD_HHMMSS_<issuer_romaji>_<yen>.pdf` |
+| Bill, invoice or payment notice | `YYYYMMDD_HHMMSS_<short_description>_<yen>.pdf` |
 | Anything else | `YYYYMMDD_HHMMSS_<short_description>.pdf` |
 
 Files are renamed in place. Nothing is overwritten (clashes get `_copy2`,
