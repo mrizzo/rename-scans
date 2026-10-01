@@ -34,6 +34,34 @@ It is careful by design:
 - A failed or refused API call leaves the file alone; it is retried next run.
 - `--dry-run` shows what would happen without renaming anything.
 
+## Why this exists
+
+For decades in the US I had an FSA, and I always maxed it out. Every so often
+the administrator asks for the receipt behind a charge to prove it was a valid
+expense. My method was simple: scan the receipt the same day I used the FSA
+card, and when they asked, go back to that day and find it.
+
+That was just one of many times I had to *find* a file. Scanning stopped being
+the hard part around 2009, when Dropbox and scanners that saved straight to a
+folder meant I didn't even have to unlock a computer. Renaming was the hard
+part. Opening each file, working out what it was and typing a sensible name was
+too much friction, so it didn't happen, and I ended up with years of folders
+full of timestamps. When the paperwork is in Japanese, multiply that by ten.
+
+When Claude Cowork came along, I had it open each new scan, work out what it
+is, and give it a consistent, sensible name. When I explained this to someone,
+I said "use Cowork, my use case is different from yours", and it still is.
+Mine: in Japan, medical expenses over ¥100,000 a year are tax deductible
+(医療費控除), I always go over that, and Japan is paperwork heavy. I even avoid
+going to new pharmacies or doctors, because each one adds another line to my
+spreadsheet and tax records. That is why receipts get the issuer and amount in
+the filename, and a row in `to-paste.tsv`.
+
+This script does the same job as that Cowork task, but on your own Anthropic
+API key instead of a Claude subscription. It's heavier to set up, but it runs
+anywhere and you can hand it to someone else. Modify it as needed: the prompt
+near the top of `rename-scans.py` is where your own rules go.
+
 ## What you need
 
 - Python 3.11 or newer (macOS: `brew install python`). Apple's built-in
@@ -44,11 +72,31 @@ It is careful by design:
 
 ## Cost
 
-Each scan is one API call. A one-page document is about 3,000 input and 80
-output tokens on `claude-opus-5-5`, roughly **1.5¢**; each extra page adds
-about a cent. Thirty scans a month comes to around $0.50. Each log line shows
-the tokens used, so you can check real numbers. Setting
-`model = "claude-sonnet-5-5"` in the config roughly halves the cost.
+You pay per scan, on your API key:
+
+| | Tokens | Cost on `claude-opus-5-5` |
+|---|---|---|
+| A one-page scan | ~3,300 in, ~100 out | about **1.5¢** |
+| Each extra page | ~1,500–3,000 more in | about 1¢ more |
+| A run with nothing new to rename | none (no API call) | **free** |
+
+The receipt date used for `to-paste.tsv` is always requested, even with
+`paste_file = ""`. It adds about 190 input and 20 output tokens, roughly
+$0.001 a scan.
+
+At about 24 scans a month (my average) that's around **$0.50 a month**, or
+$6–9 a year. Each log line shows the tokens used, so you can check your own
+numbers. Setting `model = "claude-sonnet-5-5"` in the config roughly halves the
+cost.
+
+**Compared with Cowork:** the daily Cowork task I used before started a full
+agent every run. Its local logs show roughly half a million tokens a day even
+when there was nothing to rename, and 1–3 million on a busy day, about
+$1–3 a day at API prices. It doesn't cost that in money, because a Claude
+subscription covers it within its usage limits. So if you already have a
+subscription and only need this for yourself, Cowork may well be the simpler
+choice. The script is for when you want it portable, cheap per use, or running
+for someone without a subscription.
 
 ## Setup
 
