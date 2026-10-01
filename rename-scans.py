@@ -1,4 +1,8 @@
 #!/opt/homebrew/bin/python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["anthropic>=1.11"]
+# ///
 """Rename freshly scanned PDFs using Claude.
 
 Finds raw scanner files (by default YYYY_MM_DD_HH_MM_SS.pdf) in the given folders,
