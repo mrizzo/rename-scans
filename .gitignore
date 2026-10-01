@@ -1,0 +1,4 @@
+config.toml
+api_key
+*.log
+__pycache__/

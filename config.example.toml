@@ -1,0 +1,12 @@
+# Copy to ~/.config/rename-scans/config.toml (or pass --config FILE).
+
+# Folders scanned for raw scanner files (YYYY_MM_DD_HH_MM_SS.pdf).
+# {year} becomes the current year. ~ is expanded.
+folders = [
+  "~/scans/{year}-scans",
+]
+
+# api_key_file = "~/.config/rename-scans/api_key"   # ANTHROPIC_API_KEY wins if set
+# model = "claude-opus-5-5"
+# min_age_secs = 60
+# lock_dir = "~/.rename-scans.lock"
