@@ -184,12 +184,16 @@ so the log only grows when something happens.
 If the scans folder is inside Google Drive (`~/Library/CloudStorage/...`), two
 macOS details matter. Both are one-time steps.
 
-- **Allow Python to read Google Drive.** The first time Python reads a Drive
-  file, macOS asks whether `python3` may access files in Google Drive. A cron
-  job can't show that prompt, so its reads just fail. Run the script once by
-  hand from Terminal (step 4), using the same runner as your cron line, and
-  click **Allow**. If an upgrade brings a new Python version you may be asked
-  again; until you allow it, the log shows `failed ... will retry next run`.
+- **Allow your runner to read Google Drive.** The first time the cron job
+  reads a Drive file, macOS asks whether the program that started it may
+  access files in Google Drive. The dialog names that program: **uv**,
+  **pipx** or **python3**, depending on your cron line. Until someone clicks
+  **Allow**, the read just waits: the run never finishes, the log stays
+  quiet, and later runs log `another run holds ...lock; exiting`. Running the
+  script from Terminal doesn't settle it, because there Terminal's own
+  permission applies. So be at the Mac for the first cron run that has a scan
+  to read, and click **Allow** when the dialog appears. Switching runners, or
+  an upgrade that installs a new Python, can bring the dialog back.
 - **Make the scans folder available offline.** In Finder, right-click the
   folder → *Offline access* → *Available offline*. Drive then downloads new
   files as they arrive instead of leaving online-only placeholders.
@@ -251,7 +255,8 @@ To change what counts as a receipt or how descriptions are worded, edit
 | `No API key: ...` | Step 2. |
 | `no folders: ...` | Set `folders` in the config (step 3). |
 | `skip ...: not a directory` | A folder in the config doesn't exist; check the path and year. |
-| `failed ... will retry next run` on a Drive file | Run the script once from Terminal and allow Python to access Google Drive. |
+| A run that never finishes, then `another run holds ...lock; exiting` | macOS is waiting for you to allow Google Drive access. Look for the dialog naming uv, pipx or python3 and click **Allow**. |
+| `failed ... will retry next run` on a Drive file | Google Drive access was denied. Allow it in System Settings → Privacy & Security, then wait for the next run. |
 | `failed ... authentication_error` | The API key is wrong or revoked. |
 | `failed ... credit balance is too low` | Add credit in the Anthropic console. |
 | `another run holds ...lock; exiting` every run | A run was killed mid-way; delete the lock directory. |
