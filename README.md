@@ -21,6 +21,18 @@ deduction):
 The date is the one printed on the receipt, not the scan date, so receipts
 scanned late still land in the right month.
 
+Claude's output isn't deterministic, so on its own it might spell the same
+clinic two ways on different days (`..._chuoten` one day,
+`..._chuo_ten` the next). To keep names stable, the first romaji chosen
+for each issuer is saved to `~/.config/rename-scans/issuers.tsv`
+(`kanji<TAB>romaji`) and reused for every later receipt from that issuer. Edit
+the file to pick your own spelling; lines starting with `#` are ignored:
+
+```
+# kanji	romaji
+さくら内科クリニック	sakura_clinic
+```
+
 The timestamp comes from the scanner's filename (by default
 `YYYY_MM_DD_HH_MM_SS.pdf`), so files sort by when they were scanned.
 
@@ -236,6 +248,7 @@ All optional except `folders`; see `config.example.toml`.
 | `lock_dir` | `~/.rename-scans.lock` | Prevents overlapping runs. |
 | `paste_file` | `to-paste.tsv` | Where receipt rows go. Relative paths are next to the scans; `""` turns it off. |
 | `paste_date_format` | `%m/%d/%Y` | Date format in those rows. |
+| `issuers_file` | `~/.config/rename-scans/issuers.tsv` | Saved romaji per issuer, reused so names stay consistent. `""` turns it off. |
 
 Command line:
 

@@ -34,6 +34,7 @@ Configuration lives in ~/.config/rename-scans/config.toml (or --config):
   name_format = "%Y%m%d_%H%M%S_{name}.pdf"          # optional; what to rename them to
   paste_file = "to-paste.tsv"                       # optional; "" turns it off
   paste_date_format = "%m/%d/%Y"                    # optional
+  issuers_file = "~/.config/rename-scans/issuers.tsv"  # optional; "" turns it off
 
 A folder may contain {year}, replaced by the current year. raw_format and
 name_format use strftime codes; the timestamp parsed from the raw name fills
@@ -73,6 +74,7 @@ DEFAULTS = {
     "name_format": "%Y%m%d_%H%M%S_{name}.pdf",
     "paste_file": "to-paste.tsv",
     "paste_date_format": "%m/%d/%Y",
+    "issuers_file": "~/.config/rename-scans/issuers.tsv",
 }
 MAX_PDF_BYTES = 24 * 1024 * 1024  # API request limit is 32 MB, base64 adds a third
 
@@ -210,6 +212,20 @@ def new_name(path, info, raw_format, name_format):
     return name
 
 
+def load_issuers(path):
+    """kanji -> romaji pairs from a tab-separated file; '#' lines are comments."""
+    issuers = {}
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip() or line.lstrip().startswith("#") or "\t" not in line:
+                continue
+            kanji, romaji = line.split("\t", 1)
+            kanji, romaji = " ".join(kanji.split()), slug(romaji)
+            if kanji and romaji:
+                issuers[kanji] = romaji
+    return issuers
+
+
 def paste_row(path, info, raw_format, date_format):
     """A tab-separated date / issuer / amount row for a medical receipt, or None."""
     if info.doc_type != "medical_receipt" or not info.issuer_kanji or info.amount_yen is None:
@@ -269,6 +285,8 @@ def main():
         if not scans:
             return 0
         client = anthropic.Anthropic(api_key=load_api_key(expand(config["api_key_file"])))
+        issuers_file = expand(config["issuers_file"]) if config["issuers_file"] else None
+        issuers = load_issuers(issuers_file) if issuers_file else {}
         failures = 0
         for path in scans:
             try:
@@ -277,6 +295,14 @@ def main():
                     log(f"skip {path.name}: {len(pdf) // 2**20} MB is too large for one request")
                     continue
                 info, usage = classify(client, config["model"], pdf)
+                # Reuse the romaji chosen the first time this issuer was seen, so a
+                # clinic keeps one spelling across runs; the model's own romaji varies.
+                new_issuer = None
+                if info.doc_type == "medical_receipt" and info.issuer_kanji and issuers_file:
+                    if info.issuer_kanji in issuers:
+                        info.issuer_romaji = issuers[info.issuer_kanji]
+                    elif slug(info.issuer_romaji):
+                        new_issuer = (info.issuer_kanji, slug(info.issuer_romaji))
                 name = new_name(path, info, config["raw_format"], config["name_format"])
                 extra = " ".join(x for x in (info.issuer_kanji, info.amount_yen is not None and f"¥{info.amount_yen}") if x)
                 extra = f" [{extra}]" if extra else ""
@@ -287,12 +313,20 @@ def main():
                     log(f"would rename {path.name} -> {name}{extra} {tokens}")
                     if row and paste_file:
                         log(f"would add to {paste_file.name}: {row.replace(chr(9), ' | ')}")
+                    if new_issuer:
+                        issuers[new_issuer[0]] = new_issuer[1]  # in memory only, so the preview matches a real run
+                        log(f"would remember {new_issuer[0]} -> {new_issuer[1]} in {issuers_file.name}")
                 else:
                     path.rename(path.parent / name)
                     log(f"renamed {path.name} -> {name}{extra} {tokens}")
                     if row and paste_file:
                         append_row(paste_file, row)
                         log(f"added to {paste_file.name}: {row.replace(chr(9), ' | ')}")
+                    if new_issuer:
+                        issuers_file.parent.mkdir(parents=True, exist_ok=True)
+                        append_row(issuers_file, "\t".join(new_issuer))
+                        issuers[new_issuer[0]] = new_issuer[1]
+                        log(f"remembered {new_issuer[0]} -> {new_issuer[1]} in {issuers_file.name}")
             except anthropic.APIConnectionError as e:
                 log(f"network error, stopping this run: {e}")
                 return 1
