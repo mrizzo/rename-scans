@@ -35,6 +35,7 @@ Configuration lives in ~/.config/rename-scans/config.toml (or --config):
   paste_file = "to-paste.tsv"                       # optional; "" turns it off
   paste_date_format = "%m/%d/%Y"                    # optional
   issuers_file = "~/.config/rename-scans/issuers.tsv"  # optional; "" turns it off
+  download_wait_secs = 120                          # optional; 0 turns off waiting
 
 A folder may contain {year}, replaced by the current year. raw_format and
 name_format use strftime codes; the timestamp parsed from the raw name fills
@@ -52,6 +53,7 @@ Usage:
 import argparse
 import base64
 import datetime
+import errno
 import os
 import re
 import sys
@@ -75,6 +77,7 @@ DEFAULTS = {
     "paste_file": "to-paste.tsv",
     "paste_date_format": "%m/%d/%Y",
     "issuers_file": "~/.config/rename-scans/issuers.tsv",
+    "download_wait_secs": 120,
 }
 MAX_PDF_BYTES = 24 * 1024 * 1024  # API request limit is 32 MB, base64 adds a third
 
@@ -226,6 +229,27 @@ def load_issuers(path):
     return issuers
 
 
+def read_pdf(path, wait_secs, step=20):
+    """Read a PDF, waiting while a cloud-synced copy is still downloading.
+
+    Reading a Google Drive placeholder that is mid-download fails on macOS with
+    EDEADLK ("Resource deadlock avoided"). Retry for up to wait_secs before
+    giving up, so a scan moved into the folder moments ago is still renamed in
+    this run instead of the next one.
+    """
+    waited = 0
+    while True:
+        try:
+            return path.read_bytes()
+        except OSError as e:
+            if e.errno != errno.EDEADLK or waited >= wait_secs:
+                raise
+            if waited == 0:
+                log(f"waiting for {path.name} to finish downloading")
+            time.sleep(step)
+            waited += step
+
+
 def paste_row(path, info, raw_format, date_format):
     """A tab-separated date / issuer / amount row for a medical receipt, or None."""
     if info.doc_type != "medical_receipt" or not info.issuer_kanji or info.amount_yen is None:
@@ -290,7 +314,7 @@ def main():
         failures = 0
         for path in scans:
             try:
-                pdf = path.read_bytes()
+                pdf = read_pdf(path, config["download_wait_secs"])
                 if len(pdf) > MAX_PDF_BYTES:
                     log(f"skip {path.name}: {len(pdf) // 2**20} MB is too large for one request")
                     continue
