@@ -249,6 +249,7 @@ All optional except `folders`; see `config.example.toml`.
 | `paste_file` | `to-paste.tsv` | Where receipt rows go. Relative paths are next to the scans; `""` turns it off. |
 | `paste_date_format` | `%m/%d/%Y` | Date format in those rows. |
 | `issuers_file` | `~/.config/rename-scans/issuers.tsv` | Saved romaji per issuer, reused so names stay consistent. `""` turns it off. |
+| `download_wait_secs` | `120` | How long to keep retrying a file that's still downloading (Google Drive's `Resource deadlock avoided`). `0` turns it off. |
 
 Command line:
 
@@ -269,6 +270,9 @@ To change what counts as a receipt or how descriptions are worded, edit
 | `no folders: ...` | Set `folders` in the config (step 3). |
 | `skip ...: not a directory` | A folder in the config doesn't exist; check the path and year. |
 | A run that never finishes, then `another run holds ...lock; exiting` | macOS is waiting for you to allow Google Drive access. Look for the dialog naming uv, pipx or python3 and click **Allow**. |
+| `waiting for ... to finish downloading` | Normal: Drive is still fetching a file that was just moved in. The script retries every 20 seconds for up to `download_wait_secs`. |
+| `failed ... Resource deadlock avoided` | The file was still downloading after `download_wait_secs`. It's picked up on the next run; raise the setting if this happens often. |
+| `network error ... Connection error` | Often the Mac went to sleep mid-run. On a laptop, turn on "Prevent automatic sleeping on power adapter when the display is off" (System Settings → Battery → Options). |
 | `failed ... will retry next run` on a Drive file | Google Drive access was denied. Allow it in System Settings → Privacy & Security, then wait for the next run. |
 | `failed ... authentication_error` | The API key is wrong or revoked. |
 | `failed ... credit balance is too low` | Add credit in the Anthropic console. |
