@@ -22,3 +22,9 @@ folders = [
 # A relative path lives next to the scans; "" turns it off.
 # paste_file = "to-paste.tsv"
 # paste_date_format = "%m/%d/%Y"
+
+# Clinic and pharmacy names: the first time an issuer appears, its romaji is
+# saved here (kanji<TAB>romaji) and reused for every later receipt, so the same
+# clinic always gets the same filename. Edit it to choose your own spelling.
+# "" turns it off.
+# issuers_file = "~/.config/rename-scans/issuers.tsv"
