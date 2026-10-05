@@ -12,11 +12,18 @@ notices and writes romaji/English filenames.
 
 Each medical receipt also gets a row added to `to-paste.tsv` next to the scans,
 ready to paste into a spreadsheet (for example, for a medical-expense
-deduction):
+deduction). If the scans are in a Google Drive for desktop folder, the row ends
+with the file's Drive link:
 
 ```
-09/16/2026	さくら内科クリニック	29210
+09/16/2026	さくら内科クリニック	29210	https://drive.google.com/file/d/<id>/view
 ```
+
+The link comes from the Drive ID that Drive for desktop stores on each file on
+macOS (the `com.google.drivefs.item-id#S` extended attribute), so it needs no
+Drive API access or sign-in. It doesn't share anything: the link opens only for
+people the file is already shared with. Outside a Drive folder, or before Drive
+has the file, the row has no link.
 
 The date is the one printed on the receipt, not the scan date, so receipts
 scanned late still land in the right month.
@@ -246,7 +253,7 @@ All optional except `folders`; see `config.example.toml`.
 | `model` | `claude-opus-5-5` | Claude model to use. |
 | `min_age_secs` | `60` | Skip files modified more recently than this. |
 | `lock_dir` | `~/.rename-scans.lock` | Prevents overlapping runs. |
-| `paste_file` | `to-paste.tsv` | Where receipt rows go. Relative paths are next to the scans; `""` turns it off. |
+| `paste_file` | `to-paste.tsv` | Where receipt rows (date, issuer, amount, Drive link) go. Relative paths are next to the scans; `""` turns it off. |
 | `paste_date_format` | `%m/%d/%Y` | Date format in those rows. |
 | `issuers_file` | `~/.config/rename-scans/issuers.tsv` | Saved romaji per issuer, reused so names stay consistent. `""` turns it off. |
 | `download_wait_secs` | `120` | How long to keep retrying a file that's still downloading (Google Drive's `Resource deadlock avoided`). `0` turns it off. |
