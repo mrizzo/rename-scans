@@ -43,7 +43,8 @@ name_format, and {name} is the description Claude produced. Only files whose
 name parses with raw_format are touched.
 
 Each medical receipt also gets a row appended to paste_file (date printed on the
-receipt, issuer as printed, amount), ready to paste into a spreadsheet. A
+receipt, issuer as printed, amount, and the file's Google Drive link when it is
+in a Google Drive for desktop folder), ready to paste into a spreadsheet. A
 relative paste_file lives next to the scans.
 
 Usage:
@@ -56,6 +57,7 @@ import datetime
 import errno
 import os
 import re
+import subprocess
 import sys
 import time
 import tomllib
@@ -262,6 +264,24 @@ def paste_row(path, info, raw_format, date_format):
     return f"{date.strftime(date_format)}\t{info.issuer_kanji}\t{info.amount_yen}"
 
 
+def drive_link(path):
+    """The file's Google Drive link, or None if it isn't a synced Drive file.
+
+    Google Drive for desktop (macOS) records each file's Drive ID in an extended
+    attribute, so no Drive API access is needed. The link opens only for people
+    the file is already shared with.
+    """
+    try:
+        result = subprocess.run(["xattr", "-p", "com.google.drivefs.item-id#S", str(path)],
+                                capture_output=True, text=True)
+    except OSError:  # no xattr command (not macOS)
+        return None
+    file_id = result.stdout.strip()
+    if result.returncode != 0 or not re.fullmatch(r"[\w-]+", file_id):
+        return None
+    return f"https://drive.google.com/file/d/{file_id}/view"
+
+
 def append_row(paste_file, row):
     """Append one line, adding a newline first if the file doesn't end with one."""
     needs_newline = paste_file.exists() and paste_file.stat().st_size > 0 and not paste_file.read_bytes().endswith(b"\n")
@@ -336,6 +356,8 @@ def main():
                 if args.dry_run:
                     log(f"would rename {path.name} -> {name}{extra} {tokens}")
                     if row and paste_file:
+                        link = drive_link(path)  # renaming keeps the Drive ID
+                        row += f"\t{link}" if link else ""
                         log(f"would add to {paste_file.name}: {row.replace(chr(9), ' | ')}")
                     if new_issuer:
                         issuers[new_issuer[0]] = new_issuer[1]  # in memory only, so the preview matches a real run
@@ -344,6 +366,8 @@ def main():
                     path.rename(path.parent / name)
                     log(f"renamed {path.name} -> {name}{extra} {tokens}")
                     if row and paste_file:
+                        link = drive_link(path.parent / name)
+                        row += f"\t{link}" if link else ""
                         append_row(paste_file, row)
                         log(f"added to {paste_file.name}: {row.replace(chr(9), ' | ')}")
                     if new_issuer:
